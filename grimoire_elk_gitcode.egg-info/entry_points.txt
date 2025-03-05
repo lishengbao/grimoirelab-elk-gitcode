@@ -1,0 +1,3 @@
+[grimoire_elk]
+gitcode = grimoire_elk_gitcode.utils:get_connectors
+

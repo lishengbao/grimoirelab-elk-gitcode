@@ -1,0 +1,27 @@
+Metadata-Version: 2.1
+Name: grimoire-elk-gitcode
+Version: 0.1.0
+Summary: GrimoireLab library to produce gitcode indexes for ElasticSearch
+Home-page: https://github.com/X-lab2017/grimoirelab-elk-gitcode
+Author: X-lab, HuaWei
+Author-email: lhming23@outlook.com, yehui.wang.mdh@gmail.com, chenqishan337@gmail.com
+License: GPLv3
+Keywords: development repositories analytics for gitcode
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development
+Classifier: License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Requires-Python: >=3.4
+Description-Content-Type: text/markdown
+Provides-Extra: sortinghat
+Provides-Extra: mysql
+License-File: LICENSE
+
+# grimoirelab-elk-gitcode
+Grimoirelab-ELK for gitcode backend
+
+
