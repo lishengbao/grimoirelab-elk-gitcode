@@ -289,7 +289,7 @@ class GitCodeEnrich(Enrich):
         if item['category'] in rich_category_switch:
             rich_item = rich_category_switch[item['category']]()
         else:
-            logger.error("[github] rich item not defined for GitHub category {}".format(
+            logger.error("[gitcode] rich item not defined for GitCode category {}".format(
                          item['category']))
 
         self.add_repository_labels(rich_item)
@@ -307,15 +307,20 @@ class GitCodeEnrich(Enrich):
         # The real data
         pull_request = item['data']
 
+        if pull_request['closed_at'] == '':
+            pull_request['closed_at'] = None
+        if pull_request['merged_at'] == '':
+            pull_request['merged_at'] = None
+
         #close and merge in gitcode are two different status
         if pull_request['state'] == 'merged':
             rich_pr['time_to_close_days'] = \
                 get_time_diff_days(pull_request['created_at'], pull_request['merged_at'])
         else:
-           rich_pr['time_to_close_days'] = \
+            rich_pr['time_to_close_days'] = \
                 get_time_diff_days(pull_request['created_at'], pull_request['closed_at'])
         
-        #merged is not equal to closed in gitcode
+        # merged is not equal to closed in gitcode, pr state have open, merged, closed
         if pull_request['state'] == 'open':
             rich_pr['time_open_days'] = \
                 get_time_diff_days(pull_request['created_at'], datetime_utcnow().replace(tzinfo=None))
@@ -436,11 +441,14 @@ class GitCodeEnrich(Enrich):
         # The real data
         issue = item['data']
 
+        if issue['finished_at'] == '':
+            issue['finished_at'] = None
+
         rich_issue['time_to_close_days'] = \
             get_time_diff_days(issue['created_at'], issue['finished_at'])
 
-        #issue have four status: open,progressing, closed, rejected.
-        if issue['state'] == 'open' or issue['state'] == 'progressing':
+        #issue have four status: open, closed.
+        if issue['state'] == 'open':
             rich_issue['time_open_days'] = \
                 get_time_diff_days(issue['created_at'], datetime_utcnow().replace(tzinfo=None))
         else:
@@ -468,7 +476,6 @@ class GitCodeEnrich(Enrich):
 
         assignee = issue.get('assignee_data', None)
         if assignee and assignee is not None:
-            assignee = issue['assignee_data']
             rich_issue['assignee_login'] = assignee['login']
             rich_issue['assignee_name'] = assignee['name']
             rich_issue["assignee_domain"] = self.get_email_domain(assignee['email']) if assignee.get('email', None) else None
@@ -493,16 +500,13 @@ class GitCodeEnrich(Enrich):
         rich_issue['updated_at'] = issue['updated_at']
         rich_issue['closed_at'] = issue['finished_at']
         rich_issue['url'] = issue['html_url']
-        rich_issue['issue_type'] = issue['issue_type']
+        rich_issue['issue_type'] = None
         labels = []
         [labels.append(label['name']) for label in issue['labels'] if 'labels' in issue]
         rich_issue['labels'] = labels
 
-        rich_issue['pull_request'] = True
-        rich_issue['item_type'] = 'pull request'
-        if 'head' not in issue.keys() and 'pull_request' not in issue.keys():
-            rich_issue['pull_request'] = False
-            rich_issue['item_type'] = 'issue'
+        rich_issue['pull_request'] = False
+        rich_issue['item_type'] = 'issue'
 
         rich_issue['gitcode_repo'] = rich_issue['repository'].replace(GITCODE, '')
         rich_issue['gitcode_repo'] = re.sub('.git$', '', rich_issue['gitcode_repo'])
@@ -573,7 +577,7 @@ class GitCodeEnrich(Enrich):
         rich_repo['subscribers_count'] = repo['watchers_count']
         rich_repo['stargazers_count'] = repo['stargazers_count']
         rich_repo['fetched_on'] = repo['fetched_on']
-        rich_repo['url'] = repo['html_url']
+        rich_repo['url'] = repo['web_url']
         rich_repo['status'] = repo['status']
         if repo["status"] in "关闭":
             rich_repo['archived'] = True
@@ -587,7 +591,6 @@ class GitCodeEnrich(Enrich):
         rich_releases = []
         for release in repo['releases'] :
             rich_releases_dict = {}
-            rich_releases_dict['id'] = release['id']
             rich_releases_dict['tag_name'] = release['tag_name']
             rich_releases_dict['target_commitish'] = release['target_commitish']
             rich_releases_dict['prerelease'] = release['prerelease']
@@ -612,7 +615,49 @@ class GitCodeEnrich(Enrich):
 
         return rich_repo
 
-    def get_event_type(self, action_type):
+    def get_event_type(self, action_type, content):
+        if action_type == "label" and "add" in content:
+            return "LabeledEvent"
+        elif action_type == "label" and "delete" in content:
+            return "UnlabeledEvent"
+        elif action_type == "closed":
+            return "ClosedEvent"
+        elif action_type == "opened":
+            return "ReopenedEvent"
+        elif action_type == "assignee" and "assigned" in content:
+            return "AssignedEvent"
+        elif action_type == "assignee" and "unassigned" in content:
+            return "UnassignedEvent"
+
+        
+
+        switch_event_type = {
+            "add_label": "LabeledEvent",
+            "remove_label": "UnlabeledEvent",
+            "closed_pr": "ClosedEvent",
+            "reopened_pr": "ReopenedEvent",
+            "set_assignee": "AssignedEvent",
+            "setting_assignee": "AssignedEvent",
+            "unset_assignee": "UnassignedEvent",
+            "change_assignee": "UnassignedEvent",
+            "set_milestone": "MilestonedEvent",
+            "setting_milestone": "MilestonedEvent",
+            "unset_milestone": "DemilestonedEvent",
+            "change_milestone": "DemilestonedEvent",
+            "update_title": "RenamedTitleEvent",
+            "change_title": "RenamedTitleEvent",
+            "merged_pr": "MergedEvent",
+            "update_description": "ChangeDescriptionEvent",
+            "change_description": "ChangeDescriptionEvent",
+            "setting_priority": "SettingPriorityEvent",
+            "change_priority": "ChangePriorityEvent"
+        }
+        if action_type in switch_event_type:
+            return switch_event_type[action_type]
+        else:
+            return ''.join(word.capitalize() for word in action_type.split('_')) + "Event"
+
+    def get_event_type(self, action_type, content):
         switch_event_type = {
             "add_label": "LabeledEvent",
             "remove_label": "UnlabeledEvent",
@@ -659,13 +704,13 @@ class GitCodeEnrich(Enrich):
         item['data']['actor'] = actor
 
         rich_event['id'] = event['id']
-        rich_event['icon'] = event['icon']
+        rich_event['icon'] = event.get('icon')
         rich_event['actor_username'] = actor['login']
         rich_event['user_login'] = rich_event['actor_username']
         rich_event['content'] = event['content']
         rich_event['created_at'] = event['created_at']
         rich_event['action_type'] = event['action_type']
-        rich_event['event_type'] = self.get_event_type(event['action_type'])
+        rich_event['event_type'] = self.get_event_type(event['action_type'], )  #待定
         rich_event['repository'] = item["tag"]
         rich_event['pull_request'] = False if 'issue' in event else True
         rich_event['item_type'] = 'issue' if 'issue' in event else 'pull request'
@@ -697,6 +742,25 @@ class GitCodeEnrich(Enrich):
             rich_event['issue_url'] = main_content['html_url']
             rich_event['issue_labels'] = [label['name'] for label in main_content['labels']]
             rich_event["issue_url_id"] = rich_event['gitcode_repo'] + "/issues/" + rich_event['issue_id_in_repo']
+        
+        user = event.get('user_data', None)
+        if user is not None and user:
+            rich_event['user_name'] = user['name']
+            rich_event['author_name'] = user['name']
+            rich_event['user_email'] = user.get('email', None)
+            rich_event["user_domain"] = self.get_email_domain(user['email']) if user.get('email', None) else None
+            rich_event['user_org'] = user.get('company', None)
+            rich_event['user_location'] = user.get('location', None)
+            rich_event['user_geolocation'] = None
+        else:
+            rich_event['user_name'] = None
+            rich_event['user_email'] = None
+            rich_event["user_domain"] = None
+            rich_event['user_org'] = None
+            rich_event['user_location'] = None
+            rich_event['user_geolocation'] = None
+            rich_event['author_name'] = None
+
 
         if self.prjs_map:
             rich_event.update(self.get_item_project(rich_event))
@@ -720,21 +784,37 @@ class GitCodeEnrich(Enrich):
                 rich_stargazer[f] = None
         # The real data
         stargazer = item['data']
-        rich_stargazer["user_id"] = stargazer["id"]
-        rich_stargazer["user_login"] = stargazer["login"]
-        rich_stargazer["user_name"] = stargazer["name"]
-        rich_stargazer["auhtor_name"] = stargazer["name"]
-        rich_stargazer["user_html_url"] = stargazer["html_url"]
-        rich_stargazer['user_email'] = stargazer.get('email', None)
-        rich_stargazer['user_company'] = stargazer.get('company', None)
-        rich_stargazer["user_remark"] = stargazer["remark"]
-        rich_stargazer["user_type"] = stargazer["type"]
-        rich_stargazer["star_at"] = stargazer["star_at"]
-        rich_stargazer["created_at"] = stargazer["star_at"]
+        user = stargazer.get('user_data', None)
+        if user is not None and user:
+            rich_stargazer['user_id'] = user['id']
+            rich_stargazer["user_login"] = user["login"]
+            rich_stargazer["user_name"] = user["name"]
+            rich_stargazer["auhtor_name"] = user["name"]
+            rich_stargazer["user_html_url"] = user["html_url"]
+            rich_stargazer['user_email'] = user.get('email', None)
+            rich_stargazer["user_domain"] = self.get_email_domain(user['email']) if user.get('email', None) else None
+            rich_stargazer['user_company'] = user.get('company', None)
+            rich_stargazer["user_remark"] = user.get("remark", None)
+            rich_stargazer["user_type"] = user["type"]
+            
+        else:
+            rich_stargazer['user_id'] = None
+            rich_stargazer["user_login"] = stargazer['login']
+            rich_stargazer["user_name"] = stargazer['name']
+            rich_stargazer["auhtor_name"] = None
+            rich_stargazer["user_html_url"] = None
+            rich_stargazer['user_email'] = None
+            rich_stargazer["user_domain"] = None
+            rich_stargazer['user_company'] = None
+            rich_stargazer["user_remark"] = None
+            rich_stargazer["user_type"] = None
+
+        rich_stargazer["star_at"] = stargazer["starred_at"]
+        rich_stargazer["created_at"] = stargazer["starred_at"]
                   
         if self.prjs_map:
             rich_stargazer.update(self.get_item_project(rich_stargazer))                  
-        rich_stargazer.update(self.get_grimoire_fields(stargazer['star_at'], "stargazer"))
+        rich_stargazer.update(self.get_grimoire_fields(stargazer['starred_at'], "stargazer"))
 
         return rich_stargazer
 
@@ -748,16 +828,31 @@ class GitCodeEnrich(Enrich):
                 rich_fork[f] = None
         # The real data
         fork = item['data']
-        fork_owner = fork['owner']
-        rich_fork["user_id"] = fork_owner["id"]
-        rich_fork["user_login"] = fork_owner["login"]
-        rich_fork["user_name"] = fork_owner["name"]
-        rich_fork["auhtor_name"] = fork_owner["name"]
-        rich_fork["user_html_url"] = fork_owner["html_url"]
-        rich_fork['user_email'] = fork_owner.get('email', None)
-        rich_fork['user_company'] = fork_owner.get('company', None)
-        rich_fork["user_remark"] = fork_owner["remark"]
-        rich_fork["user_type"] = fork_owner["type"]
+        user = fork.get('user_data', None)
+        if user is not None and user:
+            rich_fork['user_id'] = user['id']
+            rich_fork["user_login"] = user["login"]
+            rich_fork["user_name"] = user["name"]
+            rich_fork["auhtor_name"] = user["name"]
+            rich_fork["user_html_url"] = user["html_url"]
+            rich_fork['user_email'] = user.get('email', None)
+            rich_fork["user_domain"] = self.get_email_domain(user['email']) if user.get('email', None) else None
+            rich_fork['user_company'] = user.get('company', None)
+            rich_fork["user_remark"] = user.get("remark", None)
+            rich_fork["user_type"] = user["type"]
+            
+        else:
+            rich_fork['user_id'] = None
+            rich_fork["user_login"] = fork["owner"]['login']
+            rich_fork["user_name"] = fork["owner"]['name']
+            rich_fork["auhtor_name"] = None
+            rich_fork["user_html_url"] = None
+            rich_fork['user_email'] = None
+            rich_fork['user_domain'] = None
+            rich_fork['user_company'] = None
+            rich_fork["user_remark"] = None
+            rich_fork["user_type"] = None
+
         rich_fork["fork_at"] = fork["created_at"]
         rich_fork["created_at"] = fork["created_at"]
                   
@@ -777,15 +872,31 @@ class GitCodeEnrich(Enrich):
                 rich_watch[f] = None
         # The real data
         watch = item['data']
-        rich_watch["user_id"] = watch["id"]
-        rich_watch["user_login"] = watch["login"]
-        rich_watch["user_name"] = watch["name"]
-        rich_watch["auhtor_name"] = watch["name"]
-        rich_watch["user_html_url"] = watch["html_url"]
-        rich_watch['user_email'] = watch.get('email', None)
-        rich_watch['user_company'] = watch.get('company', None)
-        rich_watch["user_remark"] = watch["remark"]
-        rich_watch["user_type"] = watch["type"]
+        user = watch.get('user_data', None)
+        if user is not None and user:
+            rich_watch['user_id'] = user['id']
+            rich_watch["user_login"] = user["login"]
+            rich_watch["user_name"] = user["name"]
+            rich_watch["auhtor_name"] = user["name"]
+            rich_watch["user_html_url"] = user["html_url"]
+            rich_watch['user_email'] = user.get('email', None)
+            rich_watch["user_domain"] = self.get_email_domain(user['email']) if user.get('email', None) else None
+            rich_watch['user_company'] = user.get('company', None)
+            rich_watch["user_remark"] = user.get("remark", None)
+            rich_watch["user_type"] = user["type"]
+            
+        else:
+            rich_watch['user_id'] = None
+            rich_watch["user_login"] = watch['login']
+            rich_watch["user_name"] = watch['name']
+            rich_watch["auhtor_name"] = None
+            rich_watch["user_html_url"] = None
+            rich_watch['user_email'] = None
+            rich_watch['user_demain'] = None
+            rich_watch['user_company'] = None
+            rich_watch["user_remark"] = None
+            rich_watch["user_type"] = None
+
         rich_watch["watch_at"] = watch["watch_at"]
         rich_watch["created_at"] = watch["watch_at"]
                   
