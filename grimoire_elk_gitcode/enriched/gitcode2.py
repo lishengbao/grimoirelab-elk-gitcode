@@ -420,7 +420,7 @@ class GitCodeEnrich2(Enrich):
             # Copy data from the raw comment
             ecomment['body'] = comment['body'][:self.KEYWORD_MAX_LENGTH]
             ecomment['body_analyzed'] = comment['body']
-            ecomment['url'] = comment['html_url']
+            # ecomment['url'] = comment['html_url']
 
             # extract reactions and add it to enriched item
             ecomment.update(self.__get_reactions(comment))
@@ -524,6 +524,11 @@ class GitCodeEnrich2(Enrich):
         self.copy_raw_fields(self.RAW_FIELDS_COPY, item, rich_pr)
         # The real data
         pull_request = item['data']
+        
+        if pull_request['closed_at'] == '':
+            pull_request['closed_at'] = None
+        if pull_request['merged_at'] == '':
+            pull_request['merged_at'] = None
 
         rich_pr['time_to_close_days'] = \
             get_time_diff_days(pull_request['created_at'], pull_request['closed_at'])
@@ -541,26 +546,26 @@ class GitCodeEnrich2(Enrich):
             rich_pr['user_name'] = user['name']
             rich_pr['author_name'] = user['name']
             rich_pr['user_email'] = user.get('email', None)
-            rich_pr["user_domain"] = self.get_email_domain(user['email']) if user['email'] else None
-            rich_pr['user_org'] = user['company']
-            # rich_pr['user_location'] = user['location']
+            rich_pr["user_domain"] = self.get_email_domain(user['email']) if user.get('email', None) else None
+            rich_pr['user_org'] = user.get('company', None)
+            rich_pr['user_location'] = user.get('location', None)
             rich_pr['user_geolocation'] = None
         else:
             rich_pr['user_name'] = None
+            rich_pr['user_email'] = None
             rich_pr["user_domain"] = None
             rich_pr['user_org'] = None
             rich_pr['user_location'] = None
             rich_pr['user_geolocation'] = None
             rich_pr['author_name'] = None
-            rich_pr['user_email'] = None
 
         merged_by = pull_request.get('merged_by_data', None)
         if merged_by and merged_by != USER_NOT_AVAILABLE:
             rich_pr['merge_author_login'] = merged_by['login']
             rich_pr['merge_author_name'] = merged_by['name']
-            rich_pr["merge_author_domain"] = self.get_email_domain(merged_by['email']) if merged_by['email'] else None
-            rich_pr['merge_author_org'] = merged_by['company']
-            # rich_pr['merge_author_location'] = merged_by['location']
+            rich_pr["merge_author_domain"] = self.get_email_domain(merged_by['email']) if merged_by.get('email', None) else None
+            rich_pr['merge_author_org'] = merged_by.get('company', None)
+            rich_pr['merge_author_location'] = merged_by.get('location', None)
             rich_pr['merge_author_geolocation'] = None
         else:
             rich_pr['merge_author_name'] = None
@@ -635,12 +640,15 @@ class GitCodeEnrich2(Enrich):
         self.copy_raw_fields(self.RAW_FIELDS_COPY, item, rich_issue)
         # The real data
         issue = item['data']
+        
+        if issue['finished_at'] == '':
+            issue['finished_at'] = None
 
         rich_issue['time_to_close_days'] = \
             get_time_diff_days(issue['created_at'], issue['finished_at'])
 
-       #issue have four status: open,progressing, closed, rejected.
-        if issue['state'] == 'open' or issue['state'] == 'progressing':
+        #issue have four status: open, closed.
+        if issue['state'] == 'open':
             rich_issue['time_open_days'] = \
                 get_time_diff_days(issue['created_at'], datetime_utcnow().replace(tzinfo=None))
         else:
@@ -653,26 +661,26 @@ class GitCodeEnrich2(Enrich):
             rich_issue['user_name'] = user['name']
             rich_issue['author_name'] = user['name']
             rich_issue['user_email'] = user.get('email', None)
-            rich_issue["user_domain"] = self.get_email_domain(user['email']) if user['email'] else None
-            rich_issue['user_org'] = user['company']
-            # rich_issue['user_location'] = user['location']
+            rich_issue["user_domain"] = self.get_email_domain(user['email']) if user.get('email', None) else None
+            rich_issue['user_org'] = user.get('company', None)
+            rich_issue['user_location'] = user.get('location', None)
             rich_issue['user_geolocation'] = None
         else:
             rich_issue['user_name'] = None
+            rich_issue['user_email'] = None
             rich_issue["user_domain"] = None
             rich_issue['user_org'] = None
             rich_issue['user_location'] = None
             rich_issue['user_geolocation'] = None
             rich_issue['author_name'] = None
-            rich_issue['user_email'] = None
 
         assignee = issue.get('assignee_data', None)
         if assignee and assignee != USER_NOT_AVAILABLE:
             rich_issue['assignee_login'] = assignee['login']
             rich_issue['assignee_name'] = assignee['name']
-            rich_issue["assignee_domain"] = self.get_email_domain(assignee['email']) if assignee['email'] else None
-            rich_issue['assignee_org'] = assignee['company']
-            # rich_issue['assignee_location'] = assignee['location']
+            rich_issue["assignee_domain"] = self.get_email_domain(assignee['email']) if assignee.get('email', None) else None
+            rich_issue['assignee_org'] = assignee.get('company', None)
+            rich_issue['assignee_location'] = assignee.get('location', None)
             rich_issue['assignee_geolocation'] = None
         else:
             rich_issue['assignee_name'] = None
@@ -703,9 +711,7 @@ class GitCodeEnrich2(Enrich):
         rich_issue['issue_labels'] = labels
 
         rich_issue['item_type'] = ISSUE_TYPE
-        rich_issue['issue_pull_request'] = True
-        if 'head' not in issue.keys() and 'pull_request' not in issue.keys():
-            rich_issue['issue_pull_request'] = False
+        rich_issue['issue_pull_request'] = False
 
         rich_issue['gitcode_repo'] = rich_issue['repository'].replace(GITCODE, '')
         rich_issue['gitcode_repo'] = re.sub('.git$', '', rich_issue['gitcode_repo'])
