@@ -614,75 +614,50 @@ class GitCodeEnrich(Enrich):
         rich_repo.update(self.get_grimoire_fields(item['metadata__updated_on'], "repository"))
 
         return rich_repo
-
+    
     def get_event_type(self, action_type, content):
-        if action_type == "label" and "add" in content:
-            return "LabeledEvent"
-        elif action_type == "label" and "delete" in content:
-            return "UnlabeledEvent"
-        elif action_type == "closed":
-            return "ClosedEvent"
-        elif action_type == "opened":
-            return "ReopenedEvent"
-        elif action_type == "assignee" and "assigned" in content:
-            return "AssignedEvent"
-        elif action_type == "assignee" and "unassigned" in content:
-            return "UnassignedEvent"
+        rules = [
+            (lambda: action_type == "label" and "add" in content, "LabeledEvent"),
+            (lambda: action_type == "label" and "delete" in content, "UnlabeledEvent"),
+            (lambda: action_type == "closed", "ClosedEvent"),
+            (lambda: action_type == "opened", "ReopenedEvent"),
+            (lambda: action_type == "milestone" and "changed" in content, "MilestonedEvent"),
+            (lambda: action_type == "milestone" and "removed" in content, "DemilestonedEvent"),
+            (lambda: action_type == "locked", "LockedEvent"),
+            (lambda: action_type == "unlocked", "UnlockedEvent"),
+            (lambda: action_type == "title", "RenamedTitleEvent"),
+            (lambda: action_type == "merged", "MergedEvent"),
+            (lambda: action_type == "description", "ChangeDescriptionEvent"),
+            (lambda: action_type == "add_mr_issue_link", "LinkIssueEvent"),
+            (lambda: action_type == "delete_mr_issue_link", "UnlinkIssueEvent"),
+            (lambda: action_type == "add_issue_mr_link", "LinkPullRequestEvent"),
+            (lambda: action_type == "delete_issue_mr_link", "UnlinkPullRequestEvent"),
+            (lambda: action_type == "add_issue_branch_link", "SettingBranchEvent"),
+            (lambda: action_type == "delete_issue_branch_link", "ChangeBranchEvent"),
+            (lambda: action_type == "discussion", "DiscussionEvent"),
+            (lambda: action_type == "confidential", "ConfidentialEvent"),
+            (lambda: (action_type == "assignee" and "assigned" in content) or (action_type == "mr_change" and ("Add assignees" in content or "Add approvers" in content)),"AssignedEvent"),
+            (lambda: (action_type == "assignee" and "unassigned" in content) or (action_type == "mr_change" and ("Delete assignees" in content or "Delete approvers" in content)),"UnassignedEvent"),
+            (lambda: action_type == "mr_change" and "Add testers" in content, "SetTesterEvent"),
+            (lambda: action_type == "mr_change" and "deleted testers" in content, "UnsetTesterEvent"),
+            (lambda: action_type == "mr_change" and "Add reviewers" in content ,"SetReviewerEvent"),
+            (lambda: action_type == "mr_change" and "Delete reviewers" in content ,"UnsetReviewerEvent"),
+            (lambda: action_type == "mr_change" and "Approval Gate : pass" in content, "CheckPassEvent"),
+            (lambda: action_type == "mr_change" and "Test Gate : pass" in content, "TestPassEvent"),
+            (lambda: action_type == "mr_change" and "Review Gate : pass" in content, "ReviewPassEvent"),
+            (lambda: action_type == "mr_change" and "Approval Gate : reset" in content, "ResetAssignResultEvent"),
+            (lambda: action_type == "mr_change" and "Test Gate : reset" in content, "ResetTestResultEvent"),
+            (lambda: action_type == "mr_change" and "Review Gate : reset" in content, "ResetReviewResultEvent"),
+            (lambda: action_type == "mr_change" and "Approval Gate : reject" in content, "CheckRejectEvent"),
+            (lambda: action_type == "mr_change" and "Test Gate : reject" in content, "TestRejectEvent"),
+            (lambda: action_type == "mr_change" and "Review Gate : reject" in content, "ReviewRejectEvent"),    
+        ]
 
-        
+        for condition, event_type in rules:
+            if condition():
+                return event_type
+        return None
 
-        switch_event_type = {
-            "add_label": "LabeledEvent",
-            "remove_label": "UnlabeledEvent",
-            "closed_pr": "ClosedEvent",
-            "reopened_pr": "ReopenedEvent",
-            "set_assignee": "AssignedEvent",
-            "setting_assignee": "AssignedEvent",
-            "unset_assignee": "UnassignedEvent",
-            "change_assignee": "UnassignedEvent",
-            "set_milestone": "MilestonedEvent",
-            "setting_milestone": "MilestonedEvent",
-            "unset_milestone": "DemilestonedEvent",
-            "change_milestone": "DemilestonedEvent",
-            "update_title": "RenamedTitleEvent",
-            "change_title": "RenamedTitleEvent",
-            "merged_pr": "MergedEvent",
-            "update_description": "ChangeDescriptionEvent",
-            "change_description": "ChangeDescriptionEvent",
-            "setting_priority": "SettingPriorityEvent",
-            "change_priority": "ChangePriorityEvent"
-        }
-        if action_type in switch_event_type:
-            return switch_event_type[action_type]
-        else:
-            return ''.join(word.capitalize() for word in action_type.split('_')) + "Event"
-
-    def get_event_type(self, action_type, content):
-        switch_event_type = {
-            "add_label": "LabeledEvent",
-            "remove_label": "UnlabeledEvent",
-            "closed_pr": "ClosedEvent",
-            "reopened_pr": "ReopenedEvent",
-            "set_assignee": "AssignedEvent",
-            "setting_assignee": "AssignedEvent",
-            "unset_assignee": "UnassignedEvent",
-            "change_assignee": "UnassignedEvent",
-            "set_milestone": "MilestonedEvent",
-            "setting_milestone": "MilestonedEvent",
-            "unset_milestone": "DemilestonedEvent",
-            "change_milestone": "DemilestonedEvent",
-            "update_title": "RenamedTitleEvent",
-            "change_title": "RenamedTitleEvent",
-            "merged_pr": "MergedEvent",
-            "update_description": "ChangeDescriptionEvent",
-            "change_description": "ChangeDescriptionEvent",
-            "setting_priority": "SettingPriorityEvent",
-            "change_priority": "ChangePriorityEvent"
-        }
-        if action_type in switch_event_type:
-            return switch_event_type[action_type]
-        else:
-            return ''.join(word.capitalize() for word in action_type.split('_')) + "Event"
 
     def __get_rich_event(self, item):
         rich_event = {}
@@ -710,7 +685,7 @@ class GitCodeEnrich(Enrich):
         rich_event['content'] = event['content']
         rich_event['created_at'] = event['created_at']
         rich_event['action_type'] = event['action_type']
-        rich_event['event_type'] = self.get_event_type(event['action_type'], )  #待定
+        rich_event['event_type'] = self.get_event_type(event['action_type'], event['content'])
         rich_event['repository'] = item["tag"]
         rich_event['pull_request'] = False if 'issue' in event else True
         rich_event['item_type'] = 'issue' if 'issue' in event else 'pull request'
@@ -794,6 +769,7 @@ class GitCodeEnrich(Enrich):
             rich_stargazer['user_email'] = user.get('email', None)
             rich_stargazer["user_domain"] = self.get_email_domain(user['email']) if user.get('email', None) else None
             rich_stargazer['user_company'] = user.get('company', None)
+            rich_stargazer['user_location'] = user.get('location', None)
             rich_stargazer["user_remark"] = user.get("remark", None)
             rich_stargazer["user_type"] = user["type"]
             
@@ -806,6 +782,7 @@ class GitCodeEnrich(Enrich):
             rich_stargazer['user_email'] = None
             rich_stargazer["user_domain"] = None
             rich_stargazer['user_company'] = None
+            rich_stargazer['user_location'] = None
             rich_stargazer["user_remark"] = None
             rich_stargazer["user_type"] = None
 
@@ -838,6 +815,7 @@ class GitCodeEnrich(Enrich):
             rich_fork['user_email'] = user.get('email', None)
             rich_fork["user_domain"] = self.get_email_domain(user['email']) if user.get('email', None) else None
             rich_fork['user_company'] = user.get('company', None)
+            rich_fork['user_location'] = user.get('location', None)
             rich_fork["user_remark"] = user.get("remark", None)
             rich_fork["user_type"] = user["type"]
             
@@ -850,6 +828,7 @@ class GitCodeEnrich(Enrich):
             rich_fork['user_email'] = None
             rich_fork['user_domain'] = None
             rich_fork['user_company'] = None
+            rich_fork['user_location'] = None
             rich_fork["user_remark"] = None
             rich_fork["user_type"] = None
 
@@ -882,6 +861,7 @@ class GitCodeEnrich(Enrich):
             rich_watch['user_email'] = user.get('email', None)
             rich_watch["user_domain"] = self.get_email_domain(user['email']) if user.get('email', None) else None
             rich_watch['user_company'] = user.get('company', None)
+            rich_watch['user_location'] = user.get('location', None)
             rich_watch["user_remark"] = user.get("remark", None)
             rich_watch["user_type"] = user["type"]
             
@@ -894,6 +874,7 @@ class GitCodeEnrich(Enrich):
             rich_watch['user_email'] = None
             rich_watch['user_demain'] = None
             rich_watch['user_company'] = None
+            rich_watch['user_location'] = None
             rich_watch["user_remark"] = None
             rich_watch["user_type"] = None
 
