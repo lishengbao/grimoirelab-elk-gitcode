@@ -172,7 +172,7 @@ class GitCodeEnrich(Enrich):
         other than the user who created the issue
         """
         comment_dates = [str_to_datetime(comment['created_at']) for comment in item['comments_data']
-                         if item['user']['login'] != comment['user']['login']]
+                         if 'user' in comment and 'user' in item and item['user']['login'] != comment['user']['login']]
         if comment_dates:
             return min(comment_dates)
         return None
@@ -182,8 +182,8 @@ class GitCodeEnrich(Enrich):
         other than the user who created the issue and bot
         """
         comments = [comment for comment in item['comments_data']
-                         if item['user']['login'] != comment['user']['login'] \
-                             and not (comment['user']['name'].endswith("bot"))]
+                         if 'user' in comment and 'user' in item and item['user']['login'] != comment['user']['login'] \
+                             and not (comment['user'].get('name', '').endswith("bot"))]
         return len(comments)
       
     #get first attendtion without bot
@@ -192,8 +192,8 @@ class GitCodeEnrich(Enrich):
         other than the user who created the issue and bot
         """
         comment_dates = [str_to_datetime(comment['created_at']) for comment in item['comments_data']
-                         if item['user']['login'] != comment['user']['login'] \
-                             and not (comment['user']['name'].endswith("bot"))]
+                         if 'user' in comment and 'user' in item and item['user']['login'] != comment['user']['login'] \
+                             and not (comment['user'].get('name', '').endswith("bot"))]
         if comment_dates:
             return min(comment_dates)
         return None
@@ -203,9 +203,9 @@ class GitCodeEnrich(Enrich):
         other than the user who created the issue and bot
         """
         comments = [comment for comment in item['review_comments_data']
-                         if item['user']['login'] != comment['user']['login'] \
-                             and not (comment['user']['name'].endswith("bot")) \
-                                 and not (comment['user']['name'].endswith("ci"))]
+                         if 'user' in comment and 'user' in item and item['user']['login'] != comment['user']['login'] \
+                             and not (comment['user'].get('name', '').endswith("bot")) \
+                                 and not (comment['user'].get('name', '').endswith("ci"))]
         return len(comments) 
 
     def get_time_to_merge_request_response(self, item):
@@ -215,7 +215,10 @@ class GitCodeEnrich(Enrich):
         review_dates = []
         for comment in item['review_comments_data']:
             # skip comments of ghost users
-            if not comment['user']:
+            if 'user' not in comment or not comment['user']:
+                continue
+                
+            if 'user' not in item or not item['user']:
                 continue
 
             # skip comments of the pull request creator
@@ -235,8 +238,8 @@ class GitCodeEnrich(Enrich):
         other than the user who created the pr and bot
         """
         comment_dates = [str_to_datetime(comment['created_at']) for comment in item['review_comments_data']
-                         if item['user']['login'] != comment['user']['login'] \
-                             and not (comment['user']['name'].endswith("bot"))]
+                         if 'user' in comment and 'user' in item and item['user']['login'] != comment['user']['login'] \
+                             and not (comment['user'].get('name', '').endswith("bot"))]
         if comment_dates:
             return min(comment_dates)
         return None
@@ -252,7 +255,7 @@ class GitCodeEnrich(Enrich):
     def get_num_commenters(self, item):
         """Get the number of unique people who commented on the issue/pr"""
 
-        commenters = [comment['user']['login'] for comment in item['comments_data']]
+        commenters = [comment['user']['login'] for comment in item['comments_data'] if 'user' in comment]
         return len(set(commenters))
     
     def get_CVE_message(self, item):
@@ -327,7 +330,7 @@ class GitCodeEnrich(Enrich):
         else:
             rich_pr['time_open_days'] = rich_pr['time_to_close_days']
 
-        rich_pr['user_login'] = pull_request['user']['login']
+        rich_pr['user_login'] = pull_request.get('user', {}).get('login')
 
         user = pull_request.get('user_data', None)
         if user is not None and user:
@@ -382,6 +385,7 @@ class GitCodeEnrich(Enrich):
         rich_pr['merged_at'] = pull_request['merged_at']
         rich_pr['closed_at'] = pull_request['closed_at']
         rich_pr['url'] = pull_request['html_url']
+        rich_pr['review_mode'] = pull_request.get('review_mode')
         labels = []
         [labels.append(label['name']) for label in pull_request['labels'] if 'labels' in pull_request]
         rich_pr['labels'] = labels
@@ -441,7 +445,7 @@ class GitCodeEnrich(Enrich):
         # The real data
         issue = item['data']
 
-        if issue['finished_at'] == '':
+        if 'finished_at' not in issue or issue['finished_at'] == '':
             issue['finished_at'] = None
 
         rich_issue['time_to_close_days'] = \
@@ -454,7 +458,7 @@ class GitCodeEnrich(Enrich):
         else:
             rich_issue['time_open_days'] = rich_issue['time_to_close_days']
 
-        rich_issue['user_login'] = issue['user']['login']
+        rich_issue['user_login'] = issue.get('user', {}).get('login')
 
         user = issue.get('user_data', None)
         if user is not None and user:
@@ -500,7 +504,7 @@ class GitCodeEnrich(Enrich):
         rich_issue['updated_at'] = issue['updated_at']
         rich_issue['closed_at'] = issue['finished_at']
         rich_issue['url'] = issue['html_url']
-        rich_issue['issue_type'] = None
+        rich_issue['issue_type'] = issue.get('issue_type')
         labels = []
         [labels.append(label['name']) for label in issue['labels'] if 'labels' in issue]
         rich_issue['labels'] = labels
@@ -616,6 +620,9 @@ class GitCodeEnrich(Enrich):
         return rich_repo
     
     def get_event_type(self, action_type, content):
+        if action_type is None:
+            return None
+        
         rules = [
             (lambda: action_type == "label" and "add" in content, "LabeledEvent"),
             (lambda: action_type == "label" and "delete" in content, "UnlabeledEvent"),
@@ -674,7 +681,7 @@ class GitCodeEnrich(Enrich):
 
         # move the issue reporter to level of actor. This is needed to
         # allow `get_item_sh` adding SortingHat identities
-        reporter = main_content['user']
+        reporter = main_content.get('user', {})
         item['data']['reporter'] = reporter
         item['data']['actor'] = actor
 
@@ -684,8 +691,8 @@ class GitCodeEnrich(Enrich):
         rich_event['user_login'] = rich_event['actor_username']
         rich_event['content'] = event['content']
         rich_event['created_at'] = event['created_at']
-        rich_event['action_type'] = event['action_type']
-        rich_event['event_type'] = self.get_event_type(event['action_type'], event['content'])
+        rich_event['action_type'] = event.get('action_type')
+        rich_event['event_type'] = self.get_event_type(event.get('action_type'), event['content'])
         rich_event['repository'] = item["tag"]
         rich_event['pull_request'] = False if 'issue' in event else True
         rich_event['item_type'] = 'issue' if 'issue' in event else 'pull request'
@@ -700,7 +707,7 @@ class GitCodeEnrich(Enrich):
             rich_event['pull_state'] = main_content['state']
             rich_event['pull_created_at'] = main_content['created_at']
             rich_event['pull_updated_at'] = main_content['updated_at']
-            rich_event['pull_closed_at'] = main_content['closed_at']
+            rich_event['pull_closed_at'] = None if main_content['closed_at'] == '' else main_content['closed_at']
             rich_event['pull_url'] = main_content['html_url']
             rich_event['pull_labels'] = [label['name'] for label in main_content['labels']]
             rich_event["pull_url_id"] = rich_event['gitcode_repo'] + "/pull/" + rich_event['pull_id_in_repo']
@@ -712,9 +719,9 @@ class GitCodeEnrich(Enrich):
             rich_event['issue_state'] = main_content['state']
             rich_event['issue_created_at'] = main_content['created_at']
             rich_event['issue_updated_at'] = main_content['updated_at']
-            rich_event['issue_closed_at'] = main_content['finished_at']
-            rich_event['issue_finished_at'] = main_content['finished_at']
-            rich_event['issue_url'] = main_content['html_url']
+            rich_event['issue_closed_at'] = None if main_content['finished_at'] == '' else main_content['finished_at']
+            rich_event['issue_finished_at'] = rich_event['issue_closed_at']
+            rich_event['issue_url'] = main_content['html_url']  
             rich_event['issue_labels'] = [label['name'] for label in main_content['labels']]
             rich_event["issue_url_id"] = rich_event['gitcode_repo'] + "/issues/" + rich_event['issue_id_in_repo']
         

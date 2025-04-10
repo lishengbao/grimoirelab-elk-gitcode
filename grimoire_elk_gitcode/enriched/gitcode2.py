@@ -196,8 +196,11 @@ class GitCodeEnrich2(Enrich):
 
         for comment in item['comments_data']:
             # Add deleted (ghost) user
-            if not comment['user']:
+            if 'user' not in comment or not comment['user']:
                 comment['user'] = deleted_user_login
+                
+            if 'user' not in item or not item['user']:
+                item['user'] = deleted_user_login
 
             # skip comments of the issue creator
             if item['user']['login'] == comment['user']['login']:
@@ -217,8 +220,8 @@ class GitCodeEnrich2(Enrich):
         other than the user who created the issue and bot
         """
         comment_dates = [str_to_datetime(comment['created_at']) for comment in item['comments_data']
-                         if item['user']['login'] != comment['user']['login'] \
-                             and not (comment['user']['name'].endswith("bot"))]
+                         if 'user' in item and 'user' in comment and item['user']['login'] != comment['user']['login'] \
+                             and not (comment['user'].get('name', '').endswith("bot"))]
         if comment_dates:
             return min(comment_dates)
         return None
@@ -228,8 +231,8 @@ class GitCodeEnrich2(Enrich):
         other than the user who created the issue and bot
         """
         comments = [comment for comment in item['review_comments_data']
-                         if item['user']['login'] != comment['user']['login'] \
-                             and not (comment['user']['name'].endswith("bot"))]
+                         if 'user' in item and 'user' in comment and item['user']['login'] != comment['user']['login'] \
+                             and not (comment['user'].get('name', '').endswith("bot"))]
         return len(comments) 
     
     def get_num_of_comments_without_bot(self, item):
@@ -237,8 +240,8 @@ class GitCodeEnrich2(Enrich):
         other than the user who created the issue and bot
         """
         comments = [comment for comment in item['comments_data']
-                         if item['user']['login'] != comment['user']['login'] \
-                             and not (comment['user']['name'].endswith("bot"))]
+                         if 'user' in item and 'user' in comment and item['user']['login'] != comment['user']['login'] \
+                             and not (comment['user'].get('name', '').endswith("bot"))]
         return len(comments)
 
     def get_time_to_merge_request_response(self, item):
@@ -248,8 +251,11 @@ class GitCodeEnrich2(Enrich):
         review_dates = []
         for comment in item['review_comments_data']:
             # Add deleted (ghost) user
-            if not comment['user']:
+            if 'user' not in comment and not comment['user']:
                 comment['user'] = {'login': DELETED_USER_LOGIN}
+            
+            if 'user' not in item and not item['user']:
+                item['user'] = {'login': DELETED_USER_LOGIN}
 
             # skip comments of the pull request creator
             if item['user']['login'] == comment['user']['login']:
@@ -539,7 +545,7 @@ class GitCodeEnrich2(Enrich):
         else:
             rich_pr['time_open_days'] = rich_pr['time_to_close_days']
 
-        rich_pr['user_login'] = pull_request['user']['login']
+        rich_pr['user_login'] = pull_request.get('user', {}).get('login')
 
         user = pull_request.get('user_data', None)
         if user is not None and user:
@@ -654,7 +660,7 @@ class GitCodeEnrich2(Enrich):
         else:
             rich_issue['time_open_days'] = rich_issue['time_to_close_days']
 
-        rich_issue['user_login'] = issue['user']['login']
+        rich_issue['user_login'] = issue.get('user', {}).get('login')
 
         user = issue.get('user_data', None)
         if user is not None and user:
