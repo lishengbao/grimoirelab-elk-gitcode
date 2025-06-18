@@ -595,6 +595,7 @@ class GitCodeEnrich(Enrich):
         rich_releases = []
         for release in repo['releases'] :
             rich_releases_dict = {}
+            rich_releases_dict['id'] = release['target_commitish']
             rich_releases_dict['tag_name'] = release['tag_name']
             rich_releases_dict['target_commitish'] = release['target_commitish']
             rich_releases_dict['prerelease'] = release['prerelease']
@@ -610,7 +611,7 @@ class GitCodeEnrich(Enrich):
         rich_repo['releases'] = rich_releases
         rich_repo['releases_count'] = len(rich_releases)
 
-        rich_repo["topics"] = [project_label.get("name", None) for project_label in repo.get('project_labels', [])]
+        rich_repo["topics"] = repo.get('project_labels', [])
 
         if self.prjs_map:
             rich_repo.update(self.get_item_project(rich_repo))
